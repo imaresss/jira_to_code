@@ -67,8 +67,8 @@ run_codex() {
     if [ -z "$MODEL" ]; then
         codex "$AI_PROMPT" || { echo "❌ Error: Codex CLI failed."; return 1; }
     elif [ -n "$EFFORT" ]; then
-        codex exec --model "$MODEL" -c model_reasoning_effort="$EFFORT" "$AI_PROMPT" || { echo "❌ Error: Codex CLI failed."; return 1; }
+        codex --model "$MODEL" -c model_reasoning_effort="$EFFORT" "$AI_PROMPT" || { echo "❌ Error: Codex CLI failed."; return 1; }
     else
-        codex exec --model "$MODEL" "$AI_PROMPT" || { echo "❌ Error: Codex CLI failed."; return 1; }
+        codex --model "$MODEL" "$AI_PROMPT" || { echo "❌ Error: Codex CLI failed."; return 1; }
     fi
 }

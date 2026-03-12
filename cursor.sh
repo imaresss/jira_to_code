@@ -71,6 +71,6 @@ run_cursor() {
     if [ -z "$MODEL" ] || [ "$IS_CURRENT" = true ]; then
         agent "$AI_PROMPT" || { echo "❌ Error: Cursor CLI failed."; return 1; }
     else
-        agent -p "$AI_PROMPT" --model "$MODEL" || { echo "❌ Error: Cursor CLI failed."; return 1; }
+        agent "$AI_PROMPT" --model "$MODEL" || { echo "❌ Error: Cursor CLI failed."; return 1; }
     fi
 }
