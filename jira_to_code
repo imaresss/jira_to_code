@@ -1,0 +1,99 @@
+#!/bin/bash
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/codex.sh"
+source "$SCRIPT_DIR/cursor.sh"
+
+main() {
+    echo "🚀 Welcome to jira_to_code!"
+    echo "----------------------------"
+
+    # 1. Prompt for Jira ID (Required)
+    read -p "Enter Jira ID (e.g., PROJ-123): " JIRA_ID
+    if [ -z "$JIRA_ID" ]; then
+        echo "❌ Error: Jira ID cannot be empty."
+        return 1
+    fi
+
+    # 2. Prompt for Project Path (Defaults to current directory)
+    read -p "Enter Project Path [Press Enter for current dir]: " PROJECT_PATH
+    PROJECT_PATH=${PROJECT_PATH:-$PWD}
+
+    # 3. Prompt for Base Branch (Defaults to current branch)
+    read -p "Enter Base Branch [Press Enter for current branch]: " MASTER_BRANCH
+
+    # 4. Prompt for AI Tool Selection
+    echo ""
+    echo "Which AI tool would you like to use?"
+    echo "  1) Codex"
+    echo "  2) Cursor"
+    read -p "Select tool (1 or 2) [Press Enter for 1]: " AI_TOOL_CHOICE
+    AI_TOOL_CHOICE=${AI_TOOL_CHOICE:-1}
+
+    echo "----------------------------"
+
+    # 5. Navigate to the project path
+    echo "📂 Navigating to $PROJECT_PATH..."
+    cd "$PROJECT_PATH" || {
+        echo "❌ Error: Directory '$PROJECT_PATH' does not exist or is not accessible."
+        return 1
+    }
+
+    # Default to current branch if none provided
+    if [ -z "$MASTER_BRANCH" ]; then
+        MASTER_BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
+        if [ -z "$MASTER_BRANCH" ]; then
+            echo "❌ Error: Not a git repository or unable to determine current branch."
+            return 1
+        fi
+        echo "📍 Using current branch: $MASTER_BRANCH"
+    fi
+
+    # 6. Checkout the master/base branch
+    echo "🌿 Checking out base branch: $MASTER_BRANCH..."
+    git checkout "$MASTER_BRANCH" || {
+        echo "❌ Error: Failed to checkout branch '$MASTER_BRANCH'. Make sure your working tree is clean."
+        return 1
+    }
+
+    # 7. Fetch Jira ticket
+    echo "🔍 Fetching Jira ticket $JIRA_ID..."
+    local JIRA_CONTENT
+    JIRA_CONTENT=$(jira issue view "$JIRA_ID" 2>/dev/null) || {
+        echo "❌ Error: Failed to fetch Jira ticket '$JIRA_ID'. Check your Jira CLI authentication."
+        return 1
+    }
+
+    # 8. Create or switch to the new feature branch
+    echo "🔀 Switching to feature branch: feature/$JIRA_ID..."
+    git checkout -b "feature/$JIRA_ID" 2>/dev/null || git checkout "feature/$JIRA_ID" || {
+        echo "❌ Error: Failed to create or switch to feature branch 'feature/$JIRA_ID'."
+        return 1
+    }
+
+    # 9. Build AI prompt (with optional user additions)
+    local AI_PROMPT="Analyze the following Jira ticket and the current codebase. First, output a step-by-step implementation plan detailing which files need to be modified. Once you have output the plan, ask me to confirm if I want to proceed or make modifications. Then implement the code modifications. Ticket Details: $JIRA_CONTENT"
+
+    read -p "Add additional prompt text (optional, press Enter to skip): " EXTRA_PROMPT
+    if [ -n "$EXTRA_PROMPT" ]; then
+        AI_PROMPT="${AI_PROMPT}"$'\n\n'"Additional user instructions: ${EXTRA_PROMPT}"
+    fi
+
+    # 10. Execute with selected AI Tool
+
+    if [ "$AI_TOOL_CHOICE" == "1" ]; then
+        run_codex "$AI_PROMPT" || return 1
+    
+    elif [ "$AI_TOOL_CHOICE" == "2" ]; then
+        run_cursor "$AI_PROMPT" || return 1
+    
+    else
+        echo "❌ Error: Invalid AI tool selection."
+        return 1
+    fi
+
+    echo "✅ Success! Ticket $JIRA_ID setup completed on branch feature/$JIRA_ID."
+}
+
+# Execute the main function
+main
