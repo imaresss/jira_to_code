@@ -48,7 +48,7 @@ The script will guide you through a series of prompts:
 
 | Prompt | Description | Default (Press Enter) |
 |---|---|---|
-| **Jira ID** | The exact Jira ticket key you want to work on (e.g., `PROJ-123`). | Required — cannot be left blank. |
+| **Jira ID** | The Jira ticket key or full link (e.g., `PROJ-123` or `https://genbanext.atlassian.net/browse/RS-126`). Full URLs are automatically parsed to extract the ticket ID. | Required — cannot be left blank. |
 | **Project Path** | The absolute path to your local Git repository. | Current directory. |
 | **Base Branch** | The branch you want to branch off of. | Current active branch of the repository. |
 | **AI Tool** | Which AI assistant you want to process the ticket (`1` Codex, `2` Cursor). | `1` (Codex). |
@@ -133,7 +133,7 @@ jira_to_code_scripts/
 $ jira_to_code
 🚀 Welcome to jira_to_code!
 ----------------------------
-Enter Jira ID (e.g., PROJ-123): PROJ-456
+Enter Jira ID or full link (e.g., PROJ-123 or https://genbanext.atlassian.net/browse/RS-126): PROJ-456
 Enter Project Path [Press Enter for current dir]: 
 Enter Base Branch [Press Enter for current branch]: 
 

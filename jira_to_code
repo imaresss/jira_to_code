@@ -8,11 +8,17 @@ main() {
     echo "🚀 Welcome to jira_to_code!"
     echo "----------------------------"
 
-    # 1. Prompt for Jira ID (Required)
-    read -p "Enter Jira ID (e.g., PROJ-123): " JIRA_ID
+    # 1. Prompt for Jira ID (Required) - accepts ID or full link
+    read -p "Enter Jira ID or full link (e.g., PROJ-123 or https://genbanext.atlassian.net/browse/RS-126): " JIRA_ID
+    JIRA_ID=$(echo "$JIRA_ID" | xargs)
     if [ -z "$JIRA_ID" ]; then
         echo "❌ Error: Jira ID cannot be empty."
         return 1
+    fi
+    # Extract Jira ID from full link if user pasted complete URL
+    if [[ "$JIRA_ID" =~ /browse/([A-Za-z0-9]+-[0-9]+) ]]; then
+        JIRA_ID="${BASH_REMATCH[1]}"
+        echo "📍 Extracted Jira ID: $JIRA_ID"
     fi
 
     # 2. Prompt for Project Path (Defaults to current directory)
