@@ -10,10 +10,9 @@ By running a single command, this script fetches ticket details, sets up your Gi
 
 Before using this script, ensure you have the following installed and configured on your system:
 
-1. **Git**: Installed and authenticated with your repository.
-2. **Jira CLI**: You must have a Jira CLI installed (e.g., `ankitpokhrel/jira-cli`) and authenticated.
+1. **Jira CLI**: You must have a Jira CLI installed (e.g., `[ankitpokhrel/jira-cli](https://github.com/ankitpokhrel/jira-cli)`) and authenticated.
    - *Test this by running `jira issue view <ISSUE-ID>` in your terminal. It should return ticket details without prompting for a password.*
-3. **AI Command Line Tools**: Depending on your preference, you need the CLI tool installed globally:
+2. **AI Command Line Tools**: Depending on your preference, you need the CLI tool installed globally:
    - **Codex CLI**: Accessible via the `codex` command.
    - **Cursor/Agent CLI**: Accessible via the `agent` command.
 
