@@ -51,14 +51,18 @@ You can pass values via `getopts` to skip interactive prompts:
 | `-j ID` | Jira ticket ID (e.g., `PROJ-123`) |
 | `-p PATH` | Project directory path (default: current directory) |
 | `-b NAME` | Base branch name (default: current branch) |
-| `-a N` | AI tool: `1` = Codex, `2` = Cursor (default: 1) |
+| `-a TOOL` | AI tool: `codex` or `cursor` (default: codex) |
+| `-i yes` or `-i no` | Interactive session (default: yes). Use `no` for non-interactive (Codex uses `exec`, Cursor uses `-p`) |
 | `-h` | Show help and exit |
 
 **Examples:**
 
 ```bash
-# Fully non-interactive
-jira_to_code -j RS-126 -p /path/to/repo -b main -a 1
+# Fully non-interactive (no prompts, Codex exec / Cursor -p)
+jira_to_code -j RS-126 -p /path/to/repo -b main -a codex -i no
+
+# Fully non-interactive (previous style, still prompts for interactive session)
+jira_to_code -j RS-126 -p /path/to/repo -b main -a codex
 
 # Partially interactive (only Jira ID via CLI)
 jira_to_code -j RS-126
@@ -78,7 +82,8 @@ The script will guide you through a series of prompts (for any values not provid
 | **Jira ID** | The Jira ticket key or full link (e.g., `PROJ-123` or `https://genbanext.atlassian.net/browse/RS-126`). Full URLs are automatically parsed to extract the ticket ID. | Required — cannot be left blank. |
 | **Project Path** | The absolute path to your local Git repository. | Current directory. |
 | **Base Branch** | The branch you want to branch off of. | Current active branch of the repository. |
-| **AI Tool** | Which AI assistant you want to process the ticket (`1` Codex, `2` Cursor). | `1` (Codex). |
+| **AI Tool** | Which AI assistant you want to process the ticket (`codex` or `cursor`). | `codex`. |
+| **Interactive Session** | Whether the AI session should be interactive (`yes`) or non-interactive (`no`). Non-interactive uses `codex exec` for Codex and `agent -p` for Cursor. | `yes`. |
 | **Additional Prompt** | Optional extra instructions appended to the AI prompt. | Skipped. |
 
 ---
@@ -165,9 +170,9 @@ Enter Project Path [Press Enter for current dir]:
 Enter Base Branch [Press Enter for current branch]: 
 
 Which AI tool would you like to use?
-  1) Codex
-  2) Cursor
-Select tool (1 or 2) [Press Enter for 1]: 1
+  codex) Codex
+  cursor) Cursor
+Select tool (codex or cursor) [Press Enter for codex]: codex
 Add additional prompt text (optional, press Enter to skip): Please add unit tests for any new logic.
 ----------------------------
 📂 Navigating to /Users/pulkitkedia/Documents/my-repo...

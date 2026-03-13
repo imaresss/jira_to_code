@@ -14,13 +14,14 @@ Options:
   -j ID       Jira ticket ID (e.g., PROJ-123)
   -p PATH     Project directory path (default: current directory)
   -b NAME     Base branch name (default: current branch)
-  -a N        AI tool: 1=Codex, 2=Cursor (default: 1)
+  -a TOOL     AI tool: codex or cursor (default: codex)
+  -i yes|no   Interactive session (default: yes). Use 'no' for non-interactive (codex exec, agent -p)
   -h          Show this help message
 
 If any option is omitted, you will be prompted interactively.
 
 Examples:
-  jira_to_code -j RS-126 -p /path/to/repo -b main -a 1
+  jira_to_code -j RS-126 -p /path/to/repo -b main -a codex
   jira_to_code -j RS-126
   jira_to_code
 EOF
@@ -35,12 +36,13 @@ for arg in "$@"; do
 done
 
 # Parse short options with getopts
-while getopts "j:p:b:a:h" opt; do
+while getopts "j:p:b:a:i:h" opt; do
     case $opt in
         j) JIRA_ID="$OPTARG" ;;
         p) PROJECT_PATH="$OPTARG" ;;
         b) MASTER_BRANCH="$OPTARG" ;;
         a) AI_TOOL_CHOICE="$OPTARG" ;;
+        i) INTERACTIVE="$OPTARG" ;;
         h) usage ;;
         \?) usage ;;
     esac
@@ -50,16 +52,11 @@ main() {
     echo "🚀 Welcome to jira_to_code!"
     echo "----------------------------"
 
-<<<<<<< HEAD
-    # 1. Prompt for Jira ID (Required) - accepts ID or full link
-    read -p "Enter Jira ID or full link (e.g., PROJ-123 or https://genbanext.atlassian.net/browse/RS-126): " JIRA_ID
-    JIRA_ID=$(echo "$JIRA_ID" | xargs)
-=======
     # 1. Prompt for Jira ID (Required) - only if not provided via getopts
     if [ -z "$JIRA_ID" ]; then
-        read -p "Enter Jira ID (e.g., PROJ-123): " JIRA_ID
+        read -p "Enter Jira ID or full link (e.g., PROJ-123 or https://genbanext.atlassian.net/browse/RS-126): " JIRA_ID
+        JIRA_ID=$(echo "$JIRA_ID" | xargs)
     fi
->>>>>>> feature/RS-126
     if [ -z "$JIRA_ID" ]; then
         echo "❌ Error: Jira ID cannot be empty."
         return 1
@@ -85,11 +82,27 @@ main() {
     if [ -z "$AI_TOOL_CHOICE" ]; then
         echo ""
         echo "Which AI tool would you like to use?"
-        echo "  1) Codex"
-        echo "  2) Cursor"
-        read -p "Select tool (1 or 2) [Press Enter for 1]: " AI_TOOL_CHOICE
+        echo "  codex) Codex"
+        echo "  cursor) Cursor"
+        read -p "Select tool (codex or cursor) [Press Enter for codex]: " AI_TOOL_CHOICE
     fi
-    AI_TOOL_CHOICE=${AI_TOOL_CHOICE:-1}
+    AI_TOOL_CHOICE=${AI_TOOL_CHOICE:-codex}
+    AI_TOOL_CHOICE=$(echo "$AI_TOOL_CHOICE" | tr '[:upper:]' '[:lower:]')
+    if [ "$AI_TOOL_CHOICE" != "codex" ] && [ "$AI_TOOL_CHOICE" != "cursor" ]; then
+        echo "❌ Error: Invalid AI tool. Use 'codex' or 'cursor'."
+        return 1
+    fi
+
+    # 4b. Prompt for Interactive session - only if not provided via getopts
+    if [ -z "$INTERACTIVE" ]; then
+        read -p "Interactive session? (yes/no) [Press Enter for yes]: " INTERACTIVE
+    fi
+    INTERACTIVE=${INTERACTIVE:-yes}
+    INTERACTIVE=$(echo "$INTERACTIVE" | tr '[:upper:]' '[:lower:]')
+    if [ "$INTERACTIVE" != "yes" ] && [ "$INTERACTIVE" != "no" ]; then
+        echo "⚠️  Invalid value for interactive. Using 'yes'."
+        INTERACTIVE="yes"
+    fi
 
     echo "----------------------------"
 
@@ -135,19 +148,20 @@ main() {
     # 9. Build AI prompt (with optional user additions)
     local AI_PROMPT="Analyze the following Jira ticket and the current codebase. First, output a step-by-step implementation plan detailing which files need to be modified. Once you have output the plan, ask me to confirm if I want to proceed or make modifications. Then implement the code modifications. Ticket Details: $JIRA_CONTENT"
 
-    read -p "Add additional prompt text (optional, press Enter to skip): " EXTRA_PROMPT
+    EXTRA_PROMPT=""
+    if [ "$INTERACTIVE" = "yes" ]; then
+        read -p "Add additional prompt text (optional, press Enter to skip): " EXTRA_PROMPT
+    fi
     if [ -n "$EXTRA_PROMPT" ]; then
         AI_PROMPT="${AI_PROMPT}"$'\n\n'"Additional user instructions: ${EXTRA_PROMPT}"
     fi
 
     # 10. Execute with selected AI Tool
 
-    if [ "$AI_TOOL_CHOICE" == "1" ]; then
-        run_codex "$AI_PROMPT" || return 1
-    
-    elif [ "$AI_TOOL_CHOICE" == "2" ]; then
-        run_cursor "$AI_PROMPT" || return 1
-    
+    if [ "$AI_TOOL_CHOICE" = "codex" ]; then
+        run_codex "$AI_PROMPT" "$INTERACTIVE" || return 1
+    elif [ "$AI_TOOL_CHOICE" = "cursor" ]; then
+        run_cursor "$AI_PROMPT" "$INTERACTIVE" || return 1
     else
         echo "❌ Error: Invalid AI tool selection."
         return 1

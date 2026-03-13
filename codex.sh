@@ -2,6 +2,13 @@
 
 run_codex() {
     local AI_PROMPT="$1"
+    local INTERACTIVE="${2:-yes}"
+
+    if [ "$INTERACTIVE" = "no" ]; then
+        echo "🤖 Asking Codex to plan and implement (non-interactive)..."
+        codex exec --full-auto "$AI_PROMPT" || { echo "❌ Error: Codex CLI failed."; return 1; }
+        return 0
+    fi
 
     echo ""
     read -p "Press Enter to continue with default model, or type 1 to select a model: " SHOW_MODELS
