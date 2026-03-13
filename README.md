@@ -37,14 +37,41 @@ That's it — `jira_to_code` will be available system-wide immediately after ins
 Run the script in your terminal:
 
 ```bash
-./jira_to_code.sh
+./jira_to_code
 ```
 
 *(Or simply `jira_to_code` if you added it to your PATH.)*
 
+### Command-Line Options
+
+You can pass values via `getopts` to skip interactive prompts:
+
+| Option | Description |
+|--------|-------------|
+| `-j ID` | Jira ticket ID (e.g., `PROJ-123`) |
+| `-p PATH` | Project directory path (default: current directory) |
+| `-b NAME` | Base branch name (default: current branch) |
+| `-a N` | AI tool: `1` = Codex, `2` = Cursor (default: 1) |
+| `-h` | Show help and exit |
+
+**Examples:**
+
+```bash
+# Fully non-interactive
+jira_to_code -j RS-126 -p /path/to/repo -b main -a 1
+
+# Partially interactive (only Jira ID via CLI)
+jira_to_code -j RS-126
+
+# Fully interactive (unchanged behavior)
+jira_to_code
+```
+
+Any option not provided via the command line will be prompted interactively.
+
 ### Interactive Prompts
 
-The script will guide you through a series of prompts:
+The script will guide you through a series of prompts (for any values not provided via options):
 
 | Prompt | Description | Default (Press Enter) |
 |---|---|---|

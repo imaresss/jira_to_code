@@ -4,13 +4,62 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/codex.sh"
 source "$SCRIPT_DIR/cursor.sh"
 
+usage() {
+    cat << EOF
+Usage: jira_to_code [OPTIONS]
+
+Bridges Jira ticket management, Git version control, and AI-assisted coding (Codex or Cursor).
+
+Options:
+  -j ID       Jira ticket ID (e.g., PROJ-123)
+  -p PATH     Project directory path (default: current directory)
+  -b NAME     Base branch name (default: current branch)
+  -a N        AI tool: 1=Codex, 2=Cursor (default: 1)
+  -h          Show this help message
+
+If any option is omitted, you will be prompted interactively.
+
+Examples:
+  jira_to_code -j RS-126 -p /path/to/repo -b main -a 1
+  jira_to_code -j RS-126
+  jira_to_code
+EOF
+    exit 0
+}
+
+# Pre-parse --help (getopts doesn't support long options)
+for arg in "$@"; do
+    case "$arg" in
+        --help|-h) usage ;;
+    esac
+done
+
+# Parse short options with getopts
+while getopts "j:p:b:a:h" opt; do
+    case $opt in
+        j) JIRA_ID="$OPTARG" ;;
+        p) PROJECT_PATH="$OPTARG" ;;
+        b) MASTER_BRANCH="$OPTARG" ;;
+        a) AI_TOOL_CHOICE="$OPTARG" ;;
+        h) usage ;;
+        \?) usage ;;
+    esac
+done
+
 main() {
     echo "🚀 Welcome to jira_to_code!"
     echo "----------------------------"
 
+<<<<<<< HEAD
     # 1. Prompt for Jira ID (Required) - accepts ID or full link
     read -p "Enter Jira ID or full link (e.g., PROJ-123 or https://genbanext.atlassian.net/browse/RS-126): " JIRA_ID
     JIRA_ID=$(echo "$JIRA_ID" | xargs)
+=======
+    # 1. Prompt for Jira ID (Required) - only if not provided via getopts
+    if [ -z "$JIRA_ID" ]; then
+        read -p "Enter Jira ID (e.g., PROJ-123): " JIRA_ID
+    fi
+>>>>>>> feature/RS-126
     if [ -z "$JIRA_ID" ]; then
         echo "❌ Error: Jira ID cannot be empty."
         return 1
@@ -21,19 +70,25 @@ main() {
         echo "📍 Extracted Jira ID: $JIRA_ID"
     fi
 
-    # 2. Prompt for Project Path (Defaults to current directory)
-    read -p "Enter Project Path [Press Enter for current dir]: " PROJECT_PATH
+    # 2. Prompt for Project Path (Defaults to current directory) - only if not provided via getopts
+    if [ -z "$PROJECT_PATH" ]; then
+        read -p "Enter Project Path [Press Enter for current dir]: " PROJECT_PATH
+    fi
     PROJECT_PATH=${PROJECT_PATH:-$PWD}
 
-    # 3. Prompt for Base Branch (Defaults to current branch)
-    read -p "Enter Base Branch [Press Enter for current branch]: " MASTER_BRANCH
+    # 3. Prompt for Base Branch (Defaults to current branch) - only if not provided via getopts
+    if [ -z "$MASTER_BRANCH" ]; then
+        read -p "Enter Base Branch [Press Enter for current branch]: " MASTER_BRANCH
+    fi
 
-    # 4. Prompt for AI Tool Selection
-    echo ""
-    echo "Which AI tool would you like to use?"
-    echo "  1) Codex"
-    echo "  2) Cursor"
-    read -p "Select tool (1 or 2) [Press Enter for 1]: " AI_TOOL_CHOICE
+    # 4. Prompt for AI Tool Selection - only if not provided via getopts
+    if [ -z "$AI_TOOL_CHOICE" ]; then
+        echo ""
+        echo "Which AI tool would you like to use?"
+        echo "  1) Codex"
+        echo "  2) Cursor"
+        read -p "Select tool (1 or 2) [Press Enter for 1]: " AI_TOOL_CHOICE
+    fi
     AI_TOOL_CHOICE=${AI_TOOL_CHOICE:-1}
 
     echo "----------------------------"
