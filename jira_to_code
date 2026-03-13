@@ -108,11 +108,25 @@ main() {
     if [ -z "$AI_TOOL_CHOICE" ]; then
         echo ""
         echo "Which AI tool would you like to use?"
-        echo "  codex) Codex"
-        echo "  cursor) Cursor"
-        read -p "Select tool (codex or cursor) [Press Enter for codex]: " AI_TOOL_CHOICE
+        echo "  1) Codex"
+        echo "  2) Cursor"
+        read -p "Select tool (1 or 2) [Press Enter for 1]: " AI_TOOL_CHOICE
+
+        case "$AI_TOOL_CHOICE" in
+            ""|1)
+                AI_TOOL_CHOICE="codex"
+                ;;
+            2)
+                AI_TOOL_CHOICE="cursor"
+                ;;
+            *)
+                echo "❌ Error: Invalid AI tool. Use 1 for Codex or 2 for Cursor."
+                return 1
+                ;;
+        esac
     fi
-    AI_TOOL_CHOICE=${AI_TOOL_CHOICE:-codex}
+
+    # Normalize and validate AI_TOOL_CHOICE regardless of source (CLI, rc, or interactive)
     AI_TOOL_CHOICE=$(echo "$AI_TOOL_CHOICE" | tr '[:upper:]' '[:lower:]')
     if [ "$AI_TOOL_CHOICE" != "codex" ] && [ "$AI_TOOL_CHOICE" != "cursor" ]; then
         echo "❌ Error: Invalid AI tool. Use 'codex' or 'cursor'."
