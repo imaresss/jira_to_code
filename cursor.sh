@@ -2,6 +2,13 @@
 
 run_cursor() {
     local AI_PROMPT="$1"
+    local INTERACTIVE="${2:-yes}"
+
+    if [ "$INTERACTIVE" = "no" ]; then
+        echo "🤖 Asking Cursor to plan and implement (non-interactive)..."
+        agent -p --force "$AI_PROMPT" || { echo "❌ Error: Cursor CLI failed."; return 1; }
+        return 0
+    fi
 
     echo ""
     read -p "Press Enter to continue with default model, or type 1 to select a model: " SHOW_MODELS
