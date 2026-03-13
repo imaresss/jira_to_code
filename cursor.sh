@@ -3,10 +3,17 @@
 run_cursor() {
     local AI_PROMPT="$1"
     local INTERACTIVE="${2:-yes}"
+    local USE_DEFAULT_MODEL=$(echo "${3:-no}" | tr '[:upper:]' '[:lower:]')
 
     if [ "$INTERACTIVE" = "no" ]; then
         echo "🤖 Asking Cursor to plan and implement (non-interactive)..."
         agent -p --force "$AI_PROMPT" || { echo "❌ Error: Cursor CLI failed."; return 1; }
+        return 0
+    fi
+
+    if [ "$USE_DEFAULT_MODEL" = "yes" ] || [ "$USE_DEFAULT_MODEL" = "true" ]; then
+        echo "🤖 Asking Cursor to plan and implement..."
+        agent "$AI_PROMPT" || { echo "❌ Error: Cursor CLI failed."; return 1; }
         return 0
     fi
 

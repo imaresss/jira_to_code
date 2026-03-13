@@ -18,7 +18,7 @@ Options:
   -i yes|no   Interactive session (default: yes). Use 'no' for non-interactive (codex exec, agent -p)
   -h          Show this help message
 
-If any option is omitted, you will be prompted interactively.
+If any option is omitted, defaults are read from ~/.jira_to_code.rc (if present), then you are prompted.
 
 Examples:
   jira_to_code -j RS-126 -p /path/to/repo -b main -a codex
@@ -47,6 +47,32 @@ while getopts "j:p:b:a:i:h" opt; do
         \?) usage ;;
     esac
 done
+
+# Load defaults from ~/.jira_to_code.rc (only for values not set via CLI)
+load_rc_file() {
+    local rc="$HOME/.jira_to_code.rc"
+    [ -f "$rc" ] && [ -r "$rc" ] || return 0
+
+    while IFS= read -r line || [ -n "$line" ]; do
+        [[ "$line" =~ ^[[:space:]]*# ]] && continue
+        [[ "$line" =~ ^[[:space:]]*$ ]] && continue
+        [[ "$line" =~ ^[[:space:]]*([A-Za-z_][A-Za-z0-9_]*)=(.*)$ ]] || continue
+
+        local key="${BASH_REMATCH[1]}"
+        local val="${BASH_REMATCH[2]}"
+        val=$(echo "$val" | xargs)
+
+        case "$key" in
+            JIRA_ID)          [ -z "$JIRA_ID" ]          && JIRA_ID="$val" ;;
+            PROJECT_PATH)     [ -z "$PROJECT_PATH" ]     && PROJECT_PATH="$val" ;;
+            MASTER_BRANCH)    [ -z "$MASTER_BRANCH" ]    && MASTER_BRANCH="$val" ;;
+            AI_TOOL)          [ -z "$AI_TOOL_CHOICE" ]   && AI_TOOL_CHOICE="$val" ;;
+            INTERACTIVE)      [ -z "$INTERACTIVE" ]      && INTERACTIVE="$val" ;;
+            USE_DEFAULT_MODEL) [ -z "$USE_DEFAULT_MODEL" ] && USE_DEFAULT_MODEL="$val" ;;
+        esac
+    done < "$rc"
+}
+load_rc_file
 
 main() {
     echo "🚀 Welcome to jira_to_code!"
@@ -82,11 +108,25 @@ main() {
     if [ -z "$AI_TOOL_CHOICE" ]; then
         echo ""
         echo "Which AI tool would you like to use?"
-        echo "  codex) Codex"
-        echo "  cursor) Cursor"
-        read -p "Select tool (codex or cursor) [Press Enter for codex]: " AI_TOOL_CHOICE
+        echo "  1) Codex"
+        echo "  2) Cursor"
+        read -p "Select tool (1 or 2) [Press Enter for 1]: " AI_TOOL_CHOICE
+
+        case "$AI_TOOL_CHOICE" in
+            ""|1)
+                AI_TOOL_CHOICE="codex"
+                ;;
+            2)
+                AI_TOOL_CHOICE="cursor"
+                ;;
+            *)
+                echo "❌ Error: Invalid AI tool. Use 1 for Codex or 2 for Cursor."
+                return 1
+                ;;
+        esac
     fi
-    AI_TOOL_CHOICE=${AI_TOOL_CHOICE:-codex}
+
+    # Normalize and validate AI_TOOL_CHOICE regardless of source (CLI, rc, or interactive)
     AI_TOOL_CHOICE=$(echo "$AI_TOOL_CHOICE" | tr '[:upper:]' '[:lower:]')
     if [ "$AI_TOOL_CHOICE" != "codex" ] && [ "$AI_TOOL_CHOICE" != "cursor" ]; then
         echo "❌ Error: Invalid AI tool. Use 'codex' or 'cursor'."
@@ -159,9 +199,9 @@ main() {
     # 10. Execute with selected AI Tool
 
     if [ "$AI_TOOL_CHOICE" = "codex" ]; then
-        run_codex "$AI_PROMPT" "$INTERACTIVE" || return 1
+        run_codex "$AI_PROMPT" "$INTERACTIVE" "$USE_DEFAULT_MODEL" || return 1
     elif [ "$AI_TOOL_CHOICE" = "cursor" ]; then
-        run_cursor "$AI_PROMPT" "$INTERACTIVE" || return 1
+        run_cursor "$AI_PROMPT" "$INTERACTIVE" "$USE_DEFAULT_MODEL" || return 1
     else
         echo "❌ Error: Invalid AI tool selection."
         return 1
