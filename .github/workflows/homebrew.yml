@@ -13,7 +13,7 @@ jobs:
         uses: mislav/bump-homebrew-formula-action@v3
         with:
           # The name of the formula file in your tap repo (e.g., jira_to_code.rb)
-          formula-name: jira_to_code.rb
+          formula-name: jira_to_code
           
           # The target tap repository
           homebrew-tap: imaresss/homebrew-jira_to_code
