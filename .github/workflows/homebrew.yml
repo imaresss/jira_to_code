@@ -1,0 +1,28 @@
+name: Update Homebrew Tap
+
+# This triggers the action whenever you publish a new release in GitHub
+on:
+  release:
+    types: [published]
+
+jobs:
+  update-homebrew:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Update Homebrew formula
+        uses: mislav/bump-homebrew-formula-action@v3
+        with:
+          # The name of the formula file in your tap repo (e.g., jira_to_code.rb)
+          formula-name: jira_to_code.rb
+          
+          # The target tap repository
+          homebrew-tap: imaresss/homebrew-jira_to_code
+          
+          # The URL to the source code tarball for this specific release
+          download-url: https://github.com/imaresss/jira_to_code/archive/refs/tags/${{ github.event.release.tag_name }}.tar.gz
+          
+          # Optional: Automatically create a PR in the tap repo instead of pushing directly to main
+          create-pullrequest: false
+        env:
+          # The secret PAT you created in Step 2
+          COMMITTER_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}
