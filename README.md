@@ -30,6 +30,37 @@ brew install jira_to_code
 
 That's it — `jira_to_code` will be available system-wide immediately after installation.
 
+### Global Preferences (`~/.jira_to_code.rc`)
+
+You can create a `~/.jira_to_code.rc` file to save your default preferences. Values from this file are used when not provided via command-line options, reducing the number of interactive prompts.
+
+**Precedence:** Command-line options → RC file → Interactive prompts
+
+**Supported keys:**
+
+| Key | Description | Example |
+|-----|-------------|---------|
+| `JIRA_ID` | Default Jira ticket ID | `RS-129` |
+| `PROJECT_PATH` | Default project directory | `/Users/me/my-repo` |
+| `MASTER_BRANCH` | Default base branch | `main` |
+| `AI_TOOL` | Default AI tool (`codex` or `cursor`) | `cursor` |
+| `INTERACTIVE` | Default interactive mode (`yes` or `no`) | `yes` |
+| `USE_DEFAULT_MODEL` | Skip model selection and use default model (`yes` or `true` to skip) | `yes` |
+
+**Example `~/.jira_to_code.rc`:**
+
+```bash
+# Global defaults for jira_to_code
+# Lines starting with # are ignored
+
+JIRA_ID=RS-129
+PROJECT_PATH=/Users/me/my-repo
+MASTER_BRANCH=main
+AI_TOOL=cursor
+INTERACTIVE=yes
+USE_DEFAULT_MODEL=yes
+```
+
 ---
 
 ## 💻 Usage & Functioning
@@ -71,7 +102,7 @@ jira_to_code -j RS-126
 jira_to_code
 ```
 
-Any option not provided via the command line will be prompted interactively.
+Any option not provided via the command line is read from `~/.jira_to_code.rc` (if present), then prompted interactively.
 
 ### Interactive Prompts
 
@@ -116,6 +147,8 @@ Press Enter to continue with default model, or type 1 to select a model:
 
 - **Press Enter** → proceeds immediately with the tool's default model.
 - **Type `1`** → shows the model list and prompts for a selection.
+
+Set `USE_DEFAULT_MODEL=yes` in `~/.jira_to_code.rc` to skip this prompt entirely and always use the default model.
 
 ---
 

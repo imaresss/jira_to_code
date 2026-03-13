@@ -3,10 +3,17 @@
 run_codex() {
     local AI_PROMPT="$1"
     local INTERACTIVE="${2:-yes}"
+    local USE_DEFAULT_MODEL=$(echo "${3:-no}" | tr '[:upper:]' '[:lower:]')
 
     if [ "$INTERACTIVE" = "no" ]; then
         echo "🤖 Asking Codex to plan and implement (non-interactive)..."
         codex exec --full-auto "$AI_PROMPT" || { echo "❌ Error: Codex CLI failed."; return 1; }
+        return 0
+    fi
+
+    if [ "$USE_DEFAULT_MODEL" = "yes" ] || [ "$USE_DEFAULT_MODEL" = "true" ]; then
+        echo "🤖 Asking Codex to plan and implement..."
+        codex "$AI_PROMPT" || { echo "❌ Error: Codex CLI failed."; return 1; }
         return 0
     fi
 
