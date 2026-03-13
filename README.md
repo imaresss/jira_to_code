@@ -1,6 +1,6 @@
 # 🚀 Jira to Code Automator (`jira_to_code`)
 
-`jira_to_code` is an interactive Bash script designed to streamline your development workflow. It bridges the gap between Jira ticket management, Git version control, and AI-assisted coding (via Codex or Cursor).
+`jira_to_code` is your one‑stop “AI switchboard” for Jira tickets: it turns any Jira issue into a ready‑to‑code Git branch and lets you centrally pick your favorite AI assistant (Codex, Cursor, etc.) in one place to plan and implement the changes in your existing codebase.
 
 By running a single command, this script fetches ticket details, sets up your Git branches, and prompts your AI coding assistant to plan and implement the required changes.
 
