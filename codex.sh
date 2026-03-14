@@ -4,6 +4,7 @@ run_codex() {
     local AI_PROMPT="$1"
     local INTERACTIVE="${2:-yes}"
     local USE_DEFAULT_MODEL=$(echo "${3:-no}" | tr '[:upper:]' '[:lower:]')
+    local JIRA_ID="${4:-}"
 
     if [ "$INTERACTIVE" = "no" ]; then
         echo "🤖 Asking Codex to plan and implement (non-interactive)..."
@@ -11,15 +12,41 @@ run_codex() {
         return 0
     fi
 
+    # Session history capture for interactive runs (saved to ~/.jira_to_code/sessions/${JIRA_ID}_context.md)
+    local HISTORY_DIR RAW_LOG CLEAN_CONTEXT
+    if [ -n "$JIRA_ID" ]; then
+        HISTORY_DIR="$HOME/.jira_to_code/sessions"
+        mkdir -p "$HISTORY_DIR"
+        RAW_LOG=$(mktemp 2>/dev/null || echo "/tmp/${JIRA_ID}_raw_session.$$.log")
+        CLEAN_CONTEXT="$HISTORY_DIR/${JIRA_ID}_context.md"
+        _run_captured() {
+            script -q "$RAW_LOG" "$@"
+            local ret=$?
+            echo "" >> "$CLEAN_CONTEXT"
+            echo "--- Session $(date -Iseconds 2>/dev/null || date) ---" >> "$CLEAN_CONTEXT"
+            if command -v perl >/dev/null 2>&1; then
+                perl -pe 's/\x1b\[[0-9;]*[mGKF]//g' "$RAW_LOG" 2>/dev/null | col -bp >> "$CLEAN_CONTEXT" 2>/dev/null || cat "$RAW_LOG" >> "$CLEAN_CONTEXT"
+            else
+                cat "$RAW_LOG" >> "$CLEAN_CONTEXT"
+            fi
+            rm -f "$RAW_LOG"
+            [ $ret -eq 0 ] && echo "📄 Session saved to $CLEAN_CONTEXT"
+            return $ret
+        }
+        run_codex_cmd() { _run_captured codex "$@"; }
+    else
+        run_codex_cmd() { codex "$@"; }
+    fi
+
     if [ "$USE_DEFAULT_MODEL" = "yes" ] || [ "$USE_DEFAULT_MODEL" = "true" ]; then
         echo "🤖 Asking Codex to plan and implement..."
-        codex "$AI_PROMPT" || { echo "❌ Error: Codex CLI failed."; return 1; }
+        run_codex_cmd "$AI_PROMPT" || { echo "❌ Error: Codex CLI failed."; return 1; }
         return 0
     fi
 
     echo ""
     read -p "Press Enter to continue with default model, or type 1 to select a model: " SHOW_MODELS
-    [ "$SHOW_MODELS" != "1" ] && { echo "🤖 Asking Codex to plan and implement..."; codex "$AI_PROMPT" || { echo "❌ Error: Codex CLI failed."; return 1; }; return 0; }
+    [ "$SHOW_MODELS" != "1" ] && { echo "🤖 Asking Codex to plan and implement..."; run_codex_cmd "$AI_PROMPT" || { echo "❌ Error: Codex CLI failed."; return 1; }; return 0; }
 
     echo ""
     echo "Select a Codex model:"
@@ -79,10 +106,10 @@ run_codex() {
     echo "🤖 Asking Codex to plan and implement..."
 
     if [ -z "$MODEL" ]; then
-        codex "$AI_PROMPT" || { echo "❌ Error: Codex CLI failed."; return 1; }
+        run_codex_cmd "$AI_PROMPT" || { echo "❌ Error: Codex CLI failed."; return 1; }
     elif [ -n "$EFFORT" ]; then
-        codex --model "$MODEL" -c model_reasoning_effort="$EFFORT" "$AI_PROMPT" || { echo "❌ Error: Codex CLI failed."; return 1; }
+        run_codex_cmd --model "$MODEL" -c model_reasoning_effort="$EFFORT" "$AI_PROMPT" || { echo "❌ Error: Codex CLI failed."; return 1; }
     else
-        codex --model "$MODEL" "$AI_PROMPT" || { echo "❌ Error: Codex CLI failed."; return 1; }
+        run_codex_cmd --model "$MODEL" "$AI_PROMPT" || { echo "❌ Error: Codex CLI failed."; return 1; }
     fi
 }

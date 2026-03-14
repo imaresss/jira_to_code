@@ -4,6 +4,7 @@ run_cursor() {
     local AI_PROMPT="$1"
     local INTERACTIVE="${2:-yes}"
     local USE_DEFAULT_MODEL=$(echo "${3:-no}" | tr '[:upper:]' '[:lower:]')
+    local JIRA_ID="${4:-}"
 
     if [ "$INTERACTIVE" = "no" ]; then
         echo "🤖 Asking Cursor to plan and implement (non-interactive)..."
@@ -11,9 +12,35 @@ run_cursor() {
         return 0
     fi
 
+    # Session history capture for interactive runs (saved to ~/.jira_to_code/sessions/${JIRA_ID}_context.md)
+    local HISTORY_DIR RAW_LOG CLEAN_CONTEXT
+    if [ -n "$JIRA_ID" ]; then
+        HISTORY_DIR="$HOME/.jira_to_code/sessions"
+        mkdir -p "$HISTORY_DIR"
+        RAW_LOG=$(mktemp 2>/dev/null || echo "/tmp/${JIRA_ID}_raw_session.$$.log")
+        CLEAN_CONTEXT="$HISTORY_DIR/${JIRA_ID}_context.md"
+        _run_captured() {
+            script -q "$RAW_LOG" "$@"
+            local ret=$?
+            echo "" >> "$CLEAN_CONTEXT"
+            echo "--- Session $(date -Iseconds 2>/dev/null || date) ---" >> "$CLEAN_CONTEXT"
+            if command -v perl >/dev/null 2>&1; then
+                perl -pe 's/\x1b\[[0-9;]*[mGKF]//g' "$RAW_LOG" 2>/dev/null | col -bp >> "$CLEAN_CONTEXT" 2>/dev/null || cat "$RAW_LOG" >> "$CLEAN_CONTEXT"
+            else
+                cat "$RAW_LOG" >> "$CLEAN_CONTEXT"
+            fi
+            rm -f "$RAW_LOG"
+            [ $ret -eq 0 ] && echo "📄 Session saved to $CLEAN_CONTEXT"
+            return $ret
+        }
+        run_cursor_cmd() { _run_captured agent "$@"; }
+    else
+        run_cursor_cmd() { agent "$@"; }
+    fi
+
     if [ "$USE_DEFAULT_MODEL" = "yes" ] || [ "$USE_DEFAULT_MODEL" = "true" ]; then
         echo "🤖 Asking Cursor to plan and implement..."
-        agent "$AI_PROMPT" || { echo "❌ Error: Cursor CLI failed."; return 1; }
+        run_cursor_cmd "$AI_PROMPT" || { echo "❌ Error: Cursor CLI failed."; return 1; }
         return 0
     fi
 
@@ -21,7 +48,7 @@ run_cursor() {
     read -p "Press Enter to continue with default model, or type 1 to select a model: " SHOW_MODELS
     if [ "$SHOW_MODELS" != "1" ]; then
         echo "🤖 Asking Cursor to plan and implement..."
-        agent "$AI_PROMPT" || { echo "❌ Error: Cursor CLI failed."; return 1; }
+        run_cursor_cmd "$AI_PROMPT" || { echo "❌ Error: Cursor CLI failed."; return 1; }
         return 0
     fi
 
@@ -36,7 +63,7 @@ run_cursor() {
     if [ -z "$MODEL_LIST" ] || echo "$MODEL_LIST" | grep -qi "no models available"; then
         echo "⚠️  No models available. Proceeding with default."
         echo "🤖 Asking Cursor to plan and implement..."
-        agent "$AI_PROMPT" || { echo "❌ Error: Cursor CLI failed."; return 1; }
+        run_cursor_cmd "$AI_PROMPT" || { echo "❌ Error: Cursor CLI failed."; return 1; }
         return 0
     fi
 
@@ -83,8 +110,8 @@ run_cursor() {
     echo "🤖 Asking Cursor to plan and implement..."
 
     if [ -z "$MODEL" ] || [ "$IS_CURRENT" = true ]; then
-        agent "$AI_PROMPT" || { echo "❌ Error: Cursor CLI failed."; return 1; }
+        run_cursor_cmd "$AI_PROMPT" || { echo "❌ Error: Cursor CLI failed."; return 1; }
     else
-        agent "$AI_PROMPT" --model "$MODEL" || { echo "❌ Error: Cursor CLI failed."; return 1; }
+        run_cursor_cmd "$AI_PROMPT" --model "$MODEL" || { echo "❌ Error: Cursor CLI failed."; return 1; }
     fi
 }

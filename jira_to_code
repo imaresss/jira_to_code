@@ -196,12 +196,12 @@ main() {
         AI_PROMPT="${AI_PROMPT}"$'\n\n'"Additional user instructions: ${EXTRA_PROMPT}"
     fi
 
-    # 10. Execute with selected AI Tool
+    # 10. Execute with selected AI Tool (JIRA_ID passed for interactive session history capture)
 
     if [ "$AI_TOOL_CHOICE" = "codex" ]; then
-        run_codex "$AI_PROMPT" "$INTERACTIVE" "$USE_DEFAULT_MODEL" || return 1
+        run_codex "$AI_PROMPT" "$INTERACTIVE" "$USE_DEFAULT_MODEL" "$JIRA_ID" || return 1
     elif [ "$AI_TOOL_CHOICE" = "cursor" ]; then
-        run_cursor "$AI_PROMPT" "$INTERACTIVE" "$USE_DEFAULT_MODEL" || return 1
+        run_cursor "$AI_PROMPT" "$INTERACTIVE" "$USE_DEFAULT_MODEL" "$JIRA_ID" || return 1
     else
         echo "❌ Error: Invalid AI tool selection."
         return 1
