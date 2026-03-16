@@ -45,9 +45,33 @@ run_cursor() {
 
     if [ "$INTERACTIVE" = "no" ]; then
         echo "🤖 Asking Cursor to plan and implement (non-interactive)..."
-        agent -p --force "$AI_PROMPT" || { echo "❌ Error: Cursor CLI failed."; return 1; }
-        # Save non-interactive session (no --resume UUID for these)
-        _cursor_db_save "$JIRA_ID" "" "" "$PROJECT_PATH" "$BASE_BRANCH" "$EXTRA_PROMPT" "no"
+
+        # Drop a timestamp marker so we can identify which store.db was created
+        # by this specific agent run (Cursor doesn't print a --resume UUID in
+        # non-interactive mode, but it still writes a session to disk).
+        local marker_file
+        marker_file=$(mktemp)
+
+        agent -p --force "$AI_PROMPT"
+        local agent_exit=$?
+
+        # Find the store.db created/modified after our marker — that is this session.
+        local non_interactive_session_id=""
+        local newest_db
+        newest_db=$(find "$HOME/.cursor/chats" -name "store.db" -newer "$marker_file" \
+                    -exec stat -f "%m %N" {} \; 2>/dev/null \
+                    | sort -rn | head -1 | awk '{print $2}')
+        rm -f "$marker_file"
+
+        if [ -n "$newest_db" ]; then
+            non_interactive_session_id=$(basename "$(dirname "$newest_db")")
+            echo "🔍 Non-interactive session ID: $non_interactive_session_id"
+        fi
+
+        _cursor_db_save "$JIRA_ID" "$non_interactive_session_id" "" \
+            "$PROJECT_PATH" "$BASE_BRANCH" "$EXTRA_PROMPT" "no"
+
+        [ $agent_exit -ne 0 ] && { echo "❌ Error: Cursor CLI failed."; return 1; }
         return 0
     fi
 
