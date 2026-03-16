@@ -52,7 +52,7 @@ run_cursor() {
         local marker_file
         marker_file=$(mktemp)
 
-        agent -p --force "$AI_PROMPT"
+        agent -p  "$AI_PROMPT" --force
         local agent_exit=$?
 
         # Find the store.db created/modified after our marker — that is this session.
