@@ -1,6 +1,7 @@
 #!/bin/bash
 
-# Save a Cursor session entry to the SQLite registry (best-effort, non-fatal).
+# Save a Cursor session entry to the SQLite registry and immediately fetch +
+# store the conversation history in session_history (best-effort, non-fatal).
 # Usage: _cursor_db_save <jira_id> <session_id> <model> <project_path> <base_branch> <extra_prompt> <interactive>
 _cursor_db_save() {
     local jira_id="$1"
@@ -11,9 +12,13 @@ _cursor_db_save() {
     local extra_prompt="$6"
     local interactive="$7"
     [ -z "$jira_id" ] && return
+
     local script_dir
     script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-    python3 "$script_dir/db.py" save \
+
+    # Save session row; db.py prints the inserted primary key to stdout
+    local inserted_id
+    inserted_id=$(python3 "$script_dir/db.py" save \
         --jira        "$jira_id" \
         --ai          "cursor" \
         --session     "$session_id" \
@@ -22,7 +27,15 @@ _cursor_db_save() {
         --branch      "$base_branch" \
         --extra-prompt "$extra_prompt" \
         --interactive "$interactive" \
-        2>/dev/null || true
+        2>/dev/null) || true
+
+    # Fetch conversation history and store in session_history (cursor only)
+    if [ -n "$inserted_id" ]; then
+        python3 "$script_dir/db.py" save-history \
+            --sessions-id  "$inserted_id" \
+            --session-uuid "$session_id" \
+            2>/dev/null || true
+    fi
 }
 
 # Extract the --resume UUID from captured output (strips ANSI codes first).

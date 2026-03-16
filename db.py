@@ -49,6 +49,7 @@ import sqlite3
 import sys
 import os
 import time
+import json
 
 DB_PATH = os.path.expanduser("~/.jira_to_code/sessions.db")
 
@@ -118,6 +119,16 @@ def _connect() -> sqlite3.Connection:
             )
         """)
 
+    # Create session_history table if it doesn't exist
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS session_history (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            sessions_id INTEGER NOT NULL REFERENCES sessions(id),
+            conversation TEXT    DEFAULT '',
+            summary      TEXT    DEFAULT ''
+        )
+    """)
+
     conn.commit()
     return conn
 
@@ -156,7 +167,7 @@ def cmd_save(args: list):
 
     now = int(time.time())
     conn = _connect()
-    conn.execute(
+    cur = conn.execute(
         """INSERT INTO sessions
                (jira_id, session_id, ai_assistant, model, reasoning_effort,
                 project_path, base_branch, additional_prompt, interactive,
@@ -177,7 +188,61 @@ def cmd_save(args: list):
         )
     )
     conn.commit()
+    inserted_id = cur.lastrowid
     conn.close()
+    # Print the inserted id so callers (bash) can capture it
+    print(inserted_id)
+
+
+def cmd_save_history(args: list):
+    """
+    Fetch conversation history for a Cursor session and store it in session_history.
+
+    Usage: db.py save-history --sessions-id <pk> --session-uuid <cursor_uuid>
+
+    --sessions-id  : primary key of the sessions row (FK)
+    --session-uuid : Cursor composerId / --resume UUID used to fetch the history
+    """
+    flags = _parse_flags(args)
+
+    sessions_id = flags.get("sessions-id", "").strip()
+    session_uuid = flags.get("session-uuid", "").strip()
+
+    if not sessions_id:
+        print("Error: --sessions-id is required.", file=sys.stderr)
+        sys.exit(1)
+
+    if not session_uuid:
+        # Nothing to fetch — insert a blank placeholder so the FK is recorded
+        conn = _connect()
+        conn.execute(
+            "INSERT INTO session_history (sessions_id, conversation, summary) VALUES (?, ?, ?)",
+            (int(sessions_id), "", "")
+        )
+        conn.commit()
+        conn.close()
+        return
+
+    # Import get_session_history from the sibling get_session.py
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    sys.path.insert(0, script_dir)
+    try:
+        from get_session import get_session_history  # type: ignore
+    except ImportError as e:
+        print(f"Warning: could not import get_session.py: {e}", file=sys.stderr)
+        return
+
+    history = get_session_history(session_uuid)
+    conversation_json = json.dumps(history, ensure_ascii=False)
+
+    conn = _connect()
+    conn.execute(
+        "INSERT INTO session_history (sessions_id, conversation, summary) VALUES (?, ?, ?)",
+        (int(sessions_id), conversation_json, "")
+    )
+    conn.commit()
+    conn.close()
+    print(f"📚 History stored for sessions_id={sessions_id} (session={session_uuid})")
 
 
 def cmd_update_session(args: list):
@@ -262,6 +327,7 @@ def cmd_list(args: list):
 
 COMMANDS = {
     "save":           cmd_save,
+    "save-history":   cmd_save_history,
     "update-session": cmd_update_session,
     "get":            cmd_get,
     "list":           cmd_list,
