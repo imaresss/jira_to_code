@@ -4,6 +4,11 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/codex.sh"
 source "$SCRIPT_DIR/cursor.sh"
 
+# Look up the most recent session ID for a Jira ticket (returns empty string if none)
+_db_get_session() {
+    python3 "$SCRIPT_DIR/db.py" get "$1" 2>/dev/null || true
+}
+
 usage() {
     cat << EOF
 Usage: jira_to_code [OPTIONS]
@@ -196,12 +201,30 @@ main() {
         AI_PROMPT="${AI_PROMPT}"$'\n\n'"Additional user instructions: ${EXTRA_PROMPT}"
     fi
 
-    # 10. Execute with selected AI Tool
+    # 10. Check for a previous Cursor session and offer to resume
+    if [ "$AI_TOOL_CHOICE" = "cursor" ] && [ "$INTERACTIVE" = "yes" ]; then
+        local PREV_SESSION
+        PREV_SESSION=$(_db_get_session "$JIRA_ID")
+        if [ -n "$PREV_SESSION" ]; then
+            echo ""
+            echo "🔁 A previous Cursor session was found for $JIRA_ID:"
+            echo "   Session ID: $PREV_SESSION"
+            read -p "Resume it instead of starting fresh? (yes/no) [Press Enter for no]: " RESUME_CHOICE
+            if [[ "$RESUME_CHOICE" =~ ^[Yy] ]]; then
+                echo "▶️  Resuming session $PREV_SESSION..."
+                agent --resume="$PREV_SESSION" || { echo "❌ Error: Failed to resume session."; return 1; }
+                echo "✅ Resumed session for $JIRA_ID on branch feature/$JIRA_ID."
+                return 0
+            fi
+        fi
+    fi
+
+    # 11. Execute with selected AI Tool (JIRA_ID passed for session history capture + DB registration)
 
     if [ "$AI_TOOL_CHOICE" = "codex" ]; then
-        run_codex "$AI_PROMPT" "$INTERACTIVE" "$USE_DEFAULT_MODEL" || return 1
+        run_codex "$AI_PROMPT" "$INTERACTIVE" "$USE_DEFAULT_MODEL" "$JIRA_ID" || return 1
     elif [ "$AI_TOOL_CHOICE" = "cursor" ]; then
-        run_cursor "$AI_PROMPT" "$INTERACTIVE" "$USE_DEFAULT_MODEL" || return 1
+        run_cursor "$AI_PROMPT" "$INTERACTIVE" "$USE_DEFAULT_MODEL" "$JIRA_ID" || return 1
     else
         echo "❌ Error: Invalid AI tool selection."
         return 1
