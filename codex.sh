@@ -1,25 +1,61 @@
 #!/bin/bash
 
+# Save a Codex session entry to the SQLite registry (best-effort, non-fatal).
+# Usage: _codex_db_save <jira_id> <model> <reasoning_effort> <project_path> <base_branch> <extra_prompt> <interactive>
+_codex_db_save() {
+    local jira_id="$1"
+    local model="$2"
+    local effort="$3"
+    local project_path="$4"
+    local base_branch="$5"
+    local extra_prompt="$6"
+    local interactive="$7"
+    [ -z "$jira_id" ] && return
+    local script_dir
+    script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    python3 "$script_dir/db.py" save \
+        --jira        "$jira_id" \
+        --ai          "codex" \
+        --model       "$model" \
+        --effort      "$effort" \
+        --path        "$project_path" \
+        --branch      "$base_branch" \
+        --extra-prompt "$extra_prompt" \
+        --interactive "$interactive" \
+        2>/dev/null || true
+}
+
 run_codex() {
     local AI_PROMPT="$1"
     local INTERACTIVE="${2:-yes}"
     local USE_DEFAULT_MODEL=$(echo "${3:-no}" | tr '[:upper:]' '[:lower:]')
+    local JIRA_ID="${4:-}"
+    local PROJECT_PATH="${5:-}"
+    local BASE_BRANCH="${6:-}"
+    local EXTRA_PROMPT="${7:-}"
 
     if [ "$INTERACTIVE" = "no" ]; then
         echo "🤖 Asking Codex to plan and implement (non-interactive)..."
         codex exec --full-auto "$AI_PROMPT" || { echo "❌ Error: Codex CLI failed."; return 1; }
+        _codex_db_save "$JIRA_ID" "" "" "$PROJECT_PATH" "$BASE_BRANCH" "$EXTRA_PROMPT" "no"
         return 0
     fi
 
     if [ "$USE_DEFAULT_MODEL" = "yes" ] || [ "$USE_DEFAULT_MODEL" = "true" ]; then
         echo "🤖 Asking Codex to plan and implement..."
         codex "$AI_PROMPT" || { echo "❌ Error: Codex CLI failed."; return 1; }
+        _codex_db_save "$JIRA_ID" "" "" "$PROJECT_PATH" "$BASE_BRANCH" "$EXTRA_PROMPT" "yes"
         return 0
     fi
 
     echo ""
     read -p "Press Enter to continue with default model, or type 1 to select a model: " SHOW_MODELS
-    [ "$SHOW_MODELS" != "1" ] && { echo "🤖 Asking Codex to plan and implement..."; codex "$AI_PROMPT" || { echo "❌ Error: Codex CLI failed."; return 1; }; return 0; }
+    if [ "$SHOW_MODELS" != "1" ]; then
+        echo "🤖 Asking Codex to plan and implement..."
+        codex "$AI_PROMPT" || { echo "❌ Error: Codex CLI failed."; return 1; }
+        _codex_db_save "$JIRA_ID" "" "" "$PROJECT_PATH" "$BASE_BRANCH" "$EXTRA_PROMPT" "yes"
+        return 0
+    fi
 
     echo ""
     echo "Select a Codex model:"
@@ -85,4 +121,6 @@ run_codex() {
     else
         codex --model "$MODEL" "$AI_PROMPT" || { echo "❌ Error: Codex CLI failed."; return 1; }
     fi
+
+    _codex_db_save "$JIRA_ID" "$MODEL" "$EFFORT" "$PROJECT_PATH" "$BASE_BRANCH" "$EXTRA_PROMPT" "yes"
 }

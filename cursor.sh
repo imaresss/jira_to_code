@@ -1,36 +1,37 @@
 #!/bin/bash
 
-# Save a Cursor session ID to the SQLite registry (best-effort, non-fatal).
+# Save a Cursor session entry to the SQLite registry (best-effort, non-fatal).
+# Usage: _cursor_db_save <jira_id> <session_id> <model> <project_path> <base_branch> <extra_prompt> <interactive>
 _cursor_db_save() {
-    local jira_id="$1" session_id="$2" model="${3:-}"
-    [ -z "$session_id" ] || [ -z "$jira_id" ] && return
+    local jira_id="$1"
+    local session_id="$2"
+    local model="$3"
+    local project_path="$4"
+    local base_branch="$5"
+    local extra_prompt="$6"
+    local interactive="$7"
+    [ -z "$jira_id" ] && return
     local script_dir
     script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-    python3 "$script_dir/db.py" save "$jira_id" "$session_id" "cursor" "$model" 2>/dev/null || true
+    python3 "$script_dir/db.py" save \
+        --jira        "$jira_id" \
+        --ai          "cursor" \
+        --session     "$session_id" \
+        --model       "$model" \
+        --path        "$project_path" \
+        --branch      "$base_branch" \
+        --extra-prompt "$extra_prompt" \
+        --interactive "$interactive" \
+        2>/dev/null || true
 }
 
-# Run an agent command, tee its output so the user sees it live, then grep
-# the printed --resume UUID and store it in the DB.
-_run_and_register() {
-    local jira_id="$1"; shift
-    local cursor_model="$1"; shift
-    local tmp_out
-    tmp_out=$(mktemp)
-
-    # Forward all output to the terminal AND capture it
-    "$@" 2>&1 | tee "$tmp_out"
-    local exit_code=${PIPESTATUS[0]}
-
-    local session_id
-    session_id=$(grep -o 'agent --resume=[^ ]*' "$tmp_out" 2>/dev/null | head -1 | cut -d= -f2)
-    rm -f "$tmp_out"
-
-    if [ -n "$session_id" ] && [ -n "$jira_id" ]; then
-        _cursor_db_save "$jira_id" "$session_id" "$cursor_model"
-        echo "💾 Session $session_id saved for $jira_id"
-    fi
-
-    return "$exit_code"
+# Extract the --resume UUID from captured output (strips ANSI codes first).
+_extract_resume_id() {
+    local file="$1"
+    perl -pe 's/\x1b\[[0-9;]*[mGKHF]//g; s/\r//g' "$file" 2>/dev/null \
+        | grep -o 'agent --resume=[^ ]*' \
+        | head -1 \
+        | cut -d= -f2
 }
 
 run_cursor() {
@@ -38,46 +39,73 @@ run_cursor() {
     local INTERACTIVE="${2:-yes}"
     local USE_DEFAULT_MODEL=$(echo "${3:-no}" | tr '[:upper:]' '[:lower:]')
     local JIRA_ID="${4:-}"
+    local PROJECT_PATH="${5:-}"
+    local BASE_BRANCH="${6:-}"
+    local EXTRA_PROMPT="${7:-}"
 
     if [ "$INTERACTIVE" = "no" ]; then
         echo "🤖 Asking Cursor to plan and implement (non-interactive)..."
         agent -p --force "$AI_PROMPT" || { echo "❌ Error: Cursor CLI failed."; return 1; }
+        # Save non-interactive session (no --resume UUID for these)
+        _cursor_db_save "$JIRA_ID" "" "" "$PROJECT_PATH" "$BASE_BRANCH" "$EXTRA_PROMPT" "no"
         return 0
     fi
 
-    # Session history capture for interactive runs (saved to ~/.jira_to_code/sessions/${JIRA_ID}_context.md)
+    # For interactive runs: record the session via `script`, extract the
+    # --resume UUID from the captured log, save to DB and .md history.
     local HISTORY_DIR RAW_LOG CLEAN_CONTEXT
+    HISTORY_DIR="$HOME/.jira_to_code/sessions"
+    mkdir -p "$HISTORY_DIR"
+    RAW_LOG=$(mktemp 2>/dev/null || echo "/tmp/cursor_raw_session.$$.log")
+
     if [ -n "$JIRA_ID" ]; then
-        HISTORY_DIR="$HOME/.jira_to_code/sessions"
-        mkdir -p "$HISTORY_DIR"
-        RAW_LOG=$(mktemp 2>/dev/null || echo "/tmp/${JIRA_ID}_raw_session.$$.log")
         CLEAN_CONTEXT="$HISTORY_DIR/${JIRA_ID}_context.md"
-        _run_captured() {
-            script -q "$RAW_LOG" "$@"
-            local ret=$?
+    else
+        CLEAN_CONTEXT=""
+    fi
+
+    # Wraps an `agent …` invocation with `script` for capture, then:
+    #   1. Appends cleaned transcript to the .md history file (if JIRA_ID set)
+    #   2. Extracts --resume UUID and saves full session record to DB
+    run_cursor_cmd() {
+        echo "🤖 Asking Cursor to plan and implement..."
+        script -q "$RAW_LOG" agent "$@"
+        local ret=$?
+
+        # ── History .md ──────────────────────────────────────────────────────
+        if [ -n "$CLEAN_CONTEXT" ]; then
             echo "" >> "$CLEAN_CONTEXT"
             echo "--- Session $(date -Iseconds 2>/dev/null || date) ---" >> "$CLEAN_CONTEXT"
             if command -v perl >/dev/null 2>&1; then
-                perl -pe 's/\x1b\[[0-9;]*[mGKF]//g' "$RAW_LOG" 2>/dev/null | col -bp >> "$CLEAN_CONTEXT" 2>/dev/null || cat "$RAW_LOG" >> "$CLEAN_CONTEXT"
+                perl -pe 's/\x1b\[[0-9;]*[mGKHF]//g; s/\r//g' "$RAW_LOG" 2>/dev/null \
+                    | col -bp >> "$CLEAN_CONTEXT" 2>/dev/null \
+                    || cat "$RAW_LOG" >> "$CLEAN_CONTEXT"
             else
                 cat "$RAW_LOG" >> "$CLEAN_CONTEXT"
             fi
-            rm -f "$RAW_LOG"
-            [ $ret -eq 0 ] && echo "📄 Session saved to $CLEAN_CONTEXT"
-            return $ret
-        }
-        run_cursor_cmd() {
-            local model_arg="${CURSOR_MODEL:-}"
-            _run_and_register "$JIRA_ID" "$model_arg" _run_captured agent "$@"
-        }
-    else
-        run_cursor_cmd() {
-            _run_and_register "" "" agent "$@"
-        }
-    fi
+            echo "📄 Session transcript saved to $CLEAN_CONTEXT"
+        fi
+
+        # ── DB registration ──────────────────────────────────────────────────
+        local session_id=""
+        if [ -n "$JIRA_ID" ]; then
+            session_id=$(_extract_resume_id "$RAW_LOG")
+            _cursor_db_save \
+                "$JIRA_ID" \
+                "$session_id" \
+                "${CURSOR_MODEL:-}" \
+                "$PROJECT_PATH" \
+                "$BASE_BRANCH" \
+                "$EXTRA_PROMPT" \
+                "yes"
+            [ -n "$session_id" ] && echo "💾 Session $session_id saved for $JIRA_ID"
+        fi
+
+        rm -f "$RAW_LOG"
+        return "$ret"
+    }
 
     if [ "$USE_DEFAULT_MODEL" = "yes" ] || [ "$USE_DEFAULT_MODEL" = "true" ]; then
-        echo "🤖 Asking Cursor to plan and implement..."
         run_cursor_cmd "$AI_PROMPT" || { echo "❌ Error: Cursor CLI failed."; return 1; }
         return 0
     fi
@@ -85,7 +113,6 @@ run_cursor() {
     echo ""
     read -p "Press Enter to continue with default model, or type 1 to select a model: " SHOW_MODELS
     if [ "$SHOW_MODELS" != "1" ]; then
-        echo "🤖 Asking Cursor to plan and implement..."
         run_cursor_cmd "$AI_PROMPT" || { echo "❌ Error: Cursor CLI failed."; return 1; }
         return 0
     fi
@@ -100,7 +127,6 @@ run_cursor() {
 
     if [ -z "$MODEL_LIST" ] || echo "$MODEL_LIST" | grep -qi "no models available"; then
         echo "⚠️  No models available. Proceeding with default."
-        echo "🤖 Asking Cursor to plan and implement..."
         run_cursor_cmd "$AI_PROMPT" || { echo "❌ Error: Cursor CLI failed."; return 1; }
         return 0
     fi
@@ -145,10 +171,8 @@ run_cursor() {
         return 1
     fi
 
-    # Expose selected model so _run_and_register can log it
+    # Expose selected model so run_cursor_cmd can log it
     CURSOR_MODEL="$MODEL"
-
-    echo "🤖 Asking Cursor to plan and implement..."
 
     if [ -z "$MODEL" ] || [ "$IS_CURRENT" = true ]; then
         run_cursor_cmd "$AI_PROMPT" || { echo "❌ Error: Cursor CLI failed."; return 1; }

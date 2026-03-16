@@ -219,12 +219,16 @@ main() {
         fi
     fi
 
-    # 11. Execute with selected AI Tool (JIRA_ID passed for session history capture + DB registration)
+    # 11. Execute with selected AI Tool
+    #     Args: AI_PROMPT, INTERACTIVE, USE_DEFAULT_MODEL, JIRA_ID,
+    #           PROJECT_PATH, MASTER_BRANCH, EXTRA_PROMPT
 
     if [ "$AI_TOOL_CHOICE" = "codex" ]; then
-        run_codex "$AI_PROMPT" "$INTERACTIVE" "$USE_DEFAULT_MODEL" "$JIRA_ID" || return 1
+        run_codex "$AI_PROMPT" "$INTERACTIVE" "$USE_DEFAULT_MODEL" \
+            "$JIRA_ID" "$PROJECT_PATH" "$MASTER_BRANCH" "$EXTRA_PROMPT" || return 1
     elif [ "$AI_TOOL_CHOICE" = "cursor" ]; then
-        run_cursor "$AI_PROMPT" "$INTERACTIVE" "$USE_DEFAULT_MODEL" "$JIRA_ID" || return 1
+        run_cursor "$AI_PROMPT" "$INTERACTIVE" "$USE_DEFAULT_MODEL" \
+            "$JIRA_ID" "$PROJECT_PATH" "$MASTER_BRANCH" "$EXTRA_PROMPT" || return 1
     else
         echo "❌ Error: Invalid AI tool selection."
         return 1
