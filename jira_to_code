@@ -191,7 +191,7 @@ main() {
     }
 
     # 9. Build AI prompt (with optional user additions)
-    local AI_PROMPT="Analyze the following Jira ticket and the current codebase. First, output a step-by-step implementation plan detailing which files need to be modified. Once you have output the plan, ask me to confirm if I want to proceed or make modifications. Then implement the code modifications. Ticket Details: $JIRA_CONTENT"
+    local AI_PROMPT="Analyze the following Jira ticket and the current codebase. Do not call MCP server for the jira ticket as I am already providing the jira ticket description here . First, output a step-by-step implementation plan detailing which files need to be modified. Once you have output the plan, ask me to confirm if I want to proceed or make modifications. Then implement the code modifications. Ticket Details: $JIRA_CONTENT"
 
     EXTRA_PROMPT=""
     if [ "$INTERACTIVE" = "yes" ]; then
