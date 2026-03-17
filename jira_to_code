@@ -211,8 +211,8 @@ main() {
             echo "   Session ID: $PREV_SESSION"
             read -p "Resume it instead of starting fresh? (yes/no) [Press Enter for no]: " RESUME_CHOICE
             if [[ "$RESUME_CHOICE" =~ ^[Yy] ]]; then
-                echo "▶️  Resuming session $PREV_SESSION..."
-                agent --resume="$PREV_SESSION" || { echo "❌ Error: Failed to resume session."; return 1; }
+                run_cursor_resume "$PREV_SESSION" "$JIRA_ID" "$PROJECT_PATH" "$MASTER_BRANCH" \
+                    || { echo "❌ Error: Failed to resume session."; return 1; }
                 echo "✅ Resumed session for $JIRA_ID on branch feature/$JIRA_ID."
                 return 0
             fi

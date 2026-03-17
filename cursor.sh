@@ -47,6 +47,56 @@ _extract_resume_id() {
         | cut -d= -f2
 }
 
+# Resume an existing Cursor session and update its history in the DB.
+# Usage: run_cursor_resume <prev_session_uuid> <jira_id> <project_path> <base_branch>
+run_cursor_resume() {
+    local PREV_SESSION="$1"
+    local JIRA_ID="$2"
+    local PROJECT_PATH="$3"
+    local BASE_BRANCH="$4"
+
+    local HISTORY_DIR RAW_LOG CLEAN_CONTEXT
+    HISTORY_DIR="$HOME/.jira_to_code/sessions"
+    mkdir -p "$HISTORY_DIR"
+    RAW_LOG=$(mktemp 2>/dev/null || echo "/tmp/cursor_raw_session.$$.log")
+
+    if [ -n "$JIRA_ID" ]; then
+        CLEAN_CONTEXT="$HISTORY_DIR/${JIRA_ID}_context.md"
+    else
+        CLEAN_CONTEXT=""
+    fi
+
+    echo "▶️  Resuming session $PREV_SESSION..."
+    script -q "$RAW_LOG" agent --resume="$PREV_SESSION"
+    local ret=$?
+
+    # Append cleaned transcript to the .md history file
+    if [ -n "$CLEAN_CONTEXT" ]; then
+        echo "" >> "$CLEAN_CONTEXT"
+        echo "--- Resumed Session $(date -Iseconds 2>/dev/null || date) ---" >> "$CLEAN_CONTEXT"
+        if command -v perl >/dev/null 2>&1; then
+            perl -pe 's/\x1b\[[0-9;]*[mGKHF]//g; s/\r//g' "$RAW_LOG" 2>/dev/null \
+                | col -bp >> "$CLEAN_CONTEXT" 2>/dev/null \
+                || cat "$RAW_LOG" >> "$CLEAN_CONTEXT"
+        else
+            cat "$RAW_LOG" >> "$CLEAN_CONTEXT"
+        fi
+        echo "📄 Resumed session transcript saved to $CLEAN_CONTEXT"
+    fi
+
+    # Update the existing session_history row with fresh conversation — no new rows.
+    local script_dir
+    script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    python3 "$script_dir/db.py" update-history \
+        --jira         "$JIRA_ID" \
+        --session-uuid "$PREV_SESSION" \
+        2>/dev/null || true
+    [ -n "$PREV_SESSION" ] && echo "💾 Session history updated for $PREV_SESSION ($JIRA_ID)"
+
+    rm -f "$RAW_LOG"
+    return "$ret"
+}
+
 run_cursor() {
     local AI_PROMPT="$1"
     local INTERACTIVE="${2:-yes}"

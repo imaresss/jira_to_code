@@ -245,6 +245,80 @@ def cmd_save_history(args: list):
     print(f"📚 History stored for sessions_id={sessions_id} (session={session_uuid})")
 
 
+def cmd_update_history(args: list):
+    """
+    Fetch a fresh conversation snapshot for a Cursor session and UPDATE the
+    existing session_history row in-place. No new rows are inserted anywhere.
+
+    Usage: db.py update-history --jira <jira_id> --session-uuid <cursor_uuid>
+
+    --jira         : Jira ticket ID used to look up the sessions row
+    --session-uuid : Cursor composerId / --resume UUID
+    """
+    flags = _parse_flags(args)
+    jira_id      = flags.get("jira", "").strip()
+    session_uuid = flags.get("session-uuid", "").strip()
+
+    if not jira_id:
+        print("Error: --jira is required.", file=sys.stderr)
+        sys.exit(1)
+    if not session_uuid:
+        print("Error: --session-uuid is required.", file=sys.stderr)
+        sys.exit(1)
+
+    conn = _connect()
+
+    # Find the sessions row PK that matches jira_id + session_id
+    row = conn.execute(
+        "SELECT id FROM sessions WHERE jira_id = ? AND session_id = ? ORDER BY created_at DESC LIMIT 1",
+        (jira_id, session_uuid)
+    ).fetchone()
+
+    if not row:
+        print(f"Error: No sessions row found for jira_id='{jira_id}' session_id='{session_uuid}'.",
+              file=sys.stderr)
+        conn.close()
+        sys.exit(1)
+
+    sessions_pk = row["id"]
+
+    # Find the most recent session_history row for this sessions PK
+    hist_row = conn.execute(
+        "SELECT id FROM session_history WHERE sessions_id = ? ORDER BY id DESC LIMIT 1",
+        (sessions_pk,)
+    ).fetchone()
+
+    # Fetch the updated conversation from Cursor's store.db
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    sys.path.insert(0, script_dir)
+    try:
+        from get_session import get_session_history  # type: ignore
+    except ImportError as e:
+        print(f"Warning: could not import get_session.py: {e}", file=sys.stderr)
+        conn.close()
+        return
+
+    history = get_session_history(session_uuid)
+    conversation_json = json.dumps(history, ensure_ascii=False)
+
+    if hist_row:
+        conn.execute(
+            "UPDATE session_history SET conversation = ? WHERE id = ?",
+            (conversation_json, hist_row["id"])
+        )
+        print(f"📚 Updated session_history id={hist_row['id']} for sessions_id={sessions_pk} (session={session_uuid})")
+    else:
+        # Defensive: no history row exists yet — create the first one
+        conn.execute(
+            "INSERT INTO session_history (sessions_id, conversation, summary) VALUES (?, ?, ?)",
+            (sessions_pk, conversation_json, "")
+        )
+        print(f"📚 Created first session_history entry for sessions_id={sessions_pk} (session={session_uuid})")
+
+    conn.commit()
+    conn.close()
+
+
 def cmd_update_session(args: list):
     """Update session_id for the most recent row matching jira_id + ai_assistant."""
     flags = _parse_flags(args)
@@ -328,6 +402,7 @@ def cmd_list(args: list):
 COMMANDS = {
     "save":           cmd_save,
     "save-history":   cmd_save_history,
+    "update-history": cmd_update_history,
     "update-session": cmd_update_session,
     "get":            cmd_get,
     "list":           cmd_list,
