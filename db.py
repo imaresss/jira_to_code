@@ -319,6 +319,155 @@ def cmd_update_history(args: list):
     conn.close()
 
 
+def cmd_summarize_history(args: list):
+    """
+    Summarize the conversation stored in session_history using whichever AI
+    assistant was recorded for that session (cursor → agent -p, codex →
+    codex exec --full-auto) and write the result to the summary column —
+    in-place update, no new rows.
+
+    Usage:
+      db.py summarize-history --sessions-id <pk>
+      db.py summarize-history --jira <jira_id> --session-uuid <cursor_uuid>
+    """
+    import subprocess
+    import re as _re
+
+    flags = _parse_flags(args)
+    sessions_id_str = flags.get("sessions-id", "").strip()
+    jira_id         = flags.get("jira", "").strip()
+    session_uuid    = flags.get("session-uuid", "").strip()
+
+    conn = _connect()
+
+    # Resolve the session_history row AND the ai_assistant for that session.
+    # We JOIN session_history → sessions so both lookups return ai_assistant.
+    if sessions_id_str:
+        row = conn.execute(
+            """SELECT sh.id AS hist_id, sh.conversation,
+                      s.ai_assistant
+               FROM session_history sh
+               JOIN sessions s ON s.id = sh.sessions_id
+               WHERE sh.sessions_id = ?
+               ORDER BY sh.id DESC LIMIT 1""",
+            (int(sessions_id_str),)
+        ).fetchone()
+    elif jira_id and session_uuid:
+        row = conn.execute(
+            """SELECT sh.id AS hist_id, sh.conversation,
+                      s.ai_assistant
+               FROM session_history sh
+               JOIN sessions s ON s.id = sh.sessions_id
+               WHERE s.jira_id = ? AND s.session_id = ?
+               ORDER BY sh.id DESC LIMIT 1""",
+            (jira_id, session_uuid)
+        ).fetchone()
+    else:
+        print("Error: provide --sessions-id OR both --jira and --session-uuid.",
+              file=sys.stderr)
+        conn.close()
+        sys.exit(1)
+
+    if not row or not row["conversation"]:
+        print("No conversation found to summarize.", file=sys.stderr)
+        conn.close()
+        return
+
+    ai_assistant = (row["ai_assistant"] or "").strip().lower()
+    if ai_assistant not in ("cursor", "codex"):
+        print(f"Error: unknown ai_assistant '{ai_assistant}' — expected 'cursor' or 'codex'.",
+              file=sys.stderr)
+        conn.close()
+        sys.exit(1)
+
+    try:
+        history = json.loads(row["conversation"])
+    except Exception:
+        print("Warning: could not parse conversation JSON.", file=sys.stderr)
+        conn.close()
+        return
+
+    messages = history.get("messages", [])
+    if not messages:
+        print("No messages found in conversation.", file=sys.stderr)
+        conn.close()
+        return
+
+    # Format conversation as readable text for the summarization prompt
+    lines = []
+    for msg in messages:
+        role    = msg.get("role", "")
+        content = msg.get("content", "").strip()
+        if role and content:
+            lines.append(f"{role.upper()}:\n{content}")
+    conversation_text = "\n\n---\n\n".join(lines)
+
+    # Truncate to avoid exceeding the AI's context window
+    MAX_CHARS = 40_000
+    if len(conversation_text) > MAX_CHARS:
+        conversation_text = conversation_text[:MAX_CHARS] + "\n\n[... conversation truncated ...]"
+
+    prompt = (
+        "You are summarizing an AI coding session for future reference. "
+        "Do NOT use any tools — output the summary text directly.\n\n"
+        "Given the conversation below between a user and an AI coding assistant "
+        "working on a Jira ticket, produce a concise technical summary "
+        "(2-4 paragraphs) covering:\n"
+        "- What was implemented or changed\n"
+        "- Key files modified and why\n"
+        "- Important decisions or trade-offs made\n"
+        "- Any known issues, blockers, or follow-up items\n\n"
+        f"Conversation:\n{conversation_text}\n\nSummary:"
+    )
+
+    # Dispatch to the same AI assistant that was used for the session
+    if ai_assistant == "cursor":
+        cmd = ["agent", "-p", prompt, "--force"]
+        cli_name = "Cursor agent"
+    else:  # codex
+        cmd = ["codex", "exec", "--full-auto", prompt]
+        cli_name = "Codex"
+
+    print(f"🤖 Summarizing via {cli_name}...")
+    try:
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=180,
+        )
+        raw_output = result.stdout.strip() or result.stderr.strip()
+    except FileNotFoundError:
+        print(f"Error: '{cmd[0]}' command not found. Is {cli_name} CLI installed?",
+              file=sys.stderr)
+        conn.close()
+        return
+    except subprocess.TimeoutExpired:
+        print(f"Warning: {cli_name} summarization timed out after 180 s.", file=sys.stderr)
+        conn.close()
+        return
+    except Exception as e:
+        print(f"Warning: {cli_name} summarization failed: {e}", file=sys.stderr)
+        conn.close()
+        return
+
+    if not raw_output:
+        print(f"Warning: no summary output received from {cli_name}.", file=sys.stderr)
+        conn.close()
+        return
+
+    # Strip ANSI escape codes
+    summary = _re.sub(r'\x1b\[[0-9;]*[mGKHFJ]', '', raw_output).strip()
+
+    conn.execute(
+        "UPDATE session_history SET summary = ? WHERE id = ?",
+        (summary, row["hist_id"])
+    )
+    conn.commit()
+    conn.close()
+    print(f"✅ Summary stored for history_id={row['hist_id']} (via {cli_name})")
+
+
 def cmd_update_session(args: list):
     """Update session_id for the most recent row matching jira_id + ai_assistant."""
     flags = _parse_flags(args)
@@ -400,12 +549,13 @@ def cmd_list(args: list):
 # ── Entry point ───────────────────────────────────────────────────────────────
 
 COMMANDS = {
-    "save":           cmd_save,
-    "save-history":   cmd_save_history,
-    "update-history": cmd_update_history,
-    "update-session": cmd_update_session,
-    "get":            cmd_get,
-    "list":           cmd_list,
+    "save":               cmd_save,
+    "save-history":       cmd_save_history,
+    "update-history":     cmd_update_history,
+    "summarize-history":  cmd_summarize_history,
+    "update-session":     cmd_update_session,
+    "get":                cmd_get,
+    "list":               cmd_list,
 }
 
 if __name__ == "__main__":

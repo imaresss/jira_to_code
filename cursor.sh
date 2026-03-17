@@ -35,6 +35,14 @@ _cursor_db_save() {
             --sessions-id  "$inserted_id" \
             --session-uuid "$session_id" \
             2>/dev/null || true
+
+        # Summarize the stored conversation in the background (non-blocking)
+        if [ -n "$session_id" ]; then
+            echo "📝 Summarizing session history..."
+            (python3 "$script_dir/db.py" summarize-history \
+                --sessions-id "$inserted_id" \
+                2>/dev/null) &
+        fi
     fi
 }
 
@@ -92,6 +100,15 @@ run_cursor_resume() {
         --session-uuid "$PREV_SESSION" \
         2>/dev/null || true
     [ -n "$PREV_SESSION" ] && echo "💾 Session history updated for $PREV_SESSION ($JIRA_ID)"
+
+    # Re-summarize the updated conversation in the background (non-blocking)
+    if [ -n "$JIRA_ID" ] && [ -n "$PREV_SESSION" ]; then
+        echo "📝 Summarizing session history..."
+        (python3 "$script_dir/db.py" summarize-history \
+            --jira         "$JIRA_ID" \
+            --session-uuid "$PREV_SESSION" \
+            2>/dev/null) &
+    fi
 
     rm -f "$RAW_LOG"
     return "$ret"
