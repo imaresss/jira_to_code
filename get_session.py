@@ -7,6 +7,7 @@ Usage:
     python3 get_session.py --latest             # most recent session (any project)
     python3 get_session.py --jira <JIRA_ID>     # most recent session for a ticket
                                                   (requires db.py to have recorded it)
+    python3 get_session.py --codex <sessionId>  # Codex session history by session id
 
 Output: JSON with session metadata and a clean exchange of user queries
         and assistant responses (system noise stripped out).
@@ -87,7 +88,7 @@ def extract_assistant_response(content) -> str:
 
 # ── Core ─────────────────────────────────────────────────────────────────────
 
-def get_session_history(session_id: str) -> dict:
+def get_cursor_session_history(session_id: str) -> dict:
     pattern = os.path.expanduser(f"~/.cursor/chats/*/{session_id}/store.db")
     matches = glob.glob(pattern)
 
@@ -165,6 +166,126 @@ def get_session_history(session_id: str) -> dict:
     }
 
 
+def _codex_find_session_file(session_id: str) -> str:
+    """Find Codex session JSONL file by session id."""
+    pattern = os.path.expanduser(f"~/.codex/sessions/**/rollout-*{session_id}*.jsonl")
+    matches = glob.glob(pattern, recursive=True)
+    return matches[0] if matches else ""
+
+
+def _codex_get_thread_name(session_id: str) -> str:
+    """Lookup Codex thread name from session_index.jsonl."""
+    index_path = os.path.expanduser("~/.codex/session_index.jsonl")
+    if not os.path.exists(index_path):
+        return ""
+    try:
+        with open(index_path, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    row = json.loads(line)
+                except Exception:
+                    continue
+                if row.get("id") == session_id:
+                    return row.get("thread_name", "") or ""
+    except Exception:
+        return ""
+    return ""
+
+
+def _codex_extract_message_text(content) -> str:
+    """
+    Extract readable text from Codex message content.
+    Codex message content is typically a list of {type, text} parts.
+    """
+    if isinstance(content, list):
+        parts = []
+        for part in content:
+            if not isinstance(part, dict):
+                continue
+            part_type = part.get("type", "")
+            if part_type in ("input_text", "output_text", "text"):
+                text = (part.get("text") or "").strip()
+                if text:
+                    parts.append(text)
+        return "\n\n".join(parts).strip()
+    if isinstance(content, str):
+        return content.strip()
+    return ""
+
+
+def _get_codex_history(session_id: str) -> dict:
+    """Extract Codex session history by session id."""
+    session_file = _codex_find_session_file(session_id)
+    if not session_file:
+        return {"error": f"Session '{session_id}' not found under ~/.codex/sessions/"}
+
+    created_at = ""
+    model = ""
+    messages = []
+
+    try:
+        with open(session_file, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    obj = json.loads(line)
+                except Exception:
+                    continue
+
+                obj_type = obj.get("type")
+                if obj_type == "session_meta":
+                    payload = obj.get("payload") or {}
+                    created_at = payload.get("timestamp") or obj.get("timestamp") or created_at
+                    continue
+
+                if obj_type == "turn_context":
+                    payload = obj.get("payload") or {}
+                    model = payload.get("model") or model
+                    continue
+
+                if obj_type == "response_item":
+                    payload = obj.get("payload") or {}
+                    if payload.get("type") != "message":
+                        continue
+                    role = payload.get("role")
+                    if role not in ("user", "assistant"):
+                        continue
+                    text = _codex_extract_message_text(payload.get("content"))
+                    if text:
+                        messages.append({"role": role, "content": text})
+    except Exception as e:
+        return {"error": f"Failed to read Codex session '{session_id}': {e}"}
+
+    return {
+        "sessionId": session_id,
+        "name": _codex_get_thread_name(session_id),
+        "createdAt": created_at,
+        "model": model,
+        "messages": messages,
+    }
+
+
+def get_session_history_for_assistant(assistant: str, session_id: str) -> dict:
+    """
+    Dispatch session history retrieval based on assistant/model.
+    Keeps Cursor's implementation intact and adds Codex via a registry.
+    """
+    assistant = (assistant or "").strip().lower()
+    handlers = {
+        "cursor": get_cursor_session_history,
+        "codex": _get_codex_history,
+    }
+    handler = handlers.get(assistant)
+    if not handler:
+        return {"error": f"Unknown assistant '{assistant}' (expected 'cursor' or 'codex')"}
+    return handler(session_id)
+
+
 # ── Lookup helpers ────────────────────────────────────────────────────────────
 
 def get_latest_session_id() -> str:
@@ -209,6 +330,15 @@ if __name__ == "__main__":
             print(json.dumps({"error": "No Cursor sessions found under ~/.cursor/chats/"}))
             sys.exit(1)
 
+    elif args[0] == "--codex":
+        if len(args) < 2:
+            print("Usage: get_session.py --codex <sessionId>", file=sys.stderr)
+            sys.exit(1)
+        session_id = args[1].strip()
+        result = get_session_history_for_assistant("codex", session_id)
+        print(json.dumps(result, indent=2, ensure_ascii=False))
+        sys.exit(0)
+
     elif args[0] == "--jira":
         if len(args) < 2:
             print("Usage: get_session.py --jira <JIRA_ID>", file=sys.stderr)
@@ -222,5 +352,5 @@ if __name__ == "__main__":
     else:
         session_id = args[0].strip()
 
-    result = get_session_history(session_id)
+    result = get_cursor_session_history(session_id)
     print(json.dumps(result, indent=2, ensure_ascii=False))

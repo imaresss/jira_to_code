@@ -196,17 +196,21 @@ def cmd_save(args: list):
 
 def cmd_save_history(args: list):
     """
-    Fetch conversation history for a Cursor session and store it in session_history.
+    Fetch conversation history for a session and store it in session_history.
 
-    Usage: db.py save-history --sessions-id <pk> --session-uuid <cursor_uuid>
+    Usage:
+      db.py save-history --sessions-id <pk> --session-uuid <cursor_uuid>
+      db.py save-history --sessions-id <pk> --assistant codex
 
     --sessions-id  : primary key of the sessions row (FK)
     --session-uuid : Cursor composerId / --resume UUID used to fetch the history
+    --assistant    : codex | cursor (optional; if omitted uses cursor for back-compat)
     """
     flags = _parse_flags(args)
 
     sessions_id = flags.get("sessions-id", "").strip()
     session_uuid = flags.get("session-uuid", "").strip()
+    assistant = (flags.get("assistant", "") or "cursor").strip().lower()
 
     if not sessions_id:
         print("Error: --sessions-id is required.", file=sys.stderr)
@@ -223,16 +227,19 @@ def cmd_save_history(args: list):
         conn.close()
         return
 
-    # Import get_session_history from the sibling get_session.py
+    # Import get_session_history dispatcher from sibling get_session.py
     script_dir = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, script_dir)
     try:
-        from get_session import get_session_history  # type: ignore
+        from get_session import get_session_history_for_assistant  # type: ignore
     except ImportError as e:
         print(f"Warning: could not import get_session.py: {e}", file=sys.stderr)
         return
 
-    history = get_session_history(session_uuid)
+    if assistant == "cursor":
+        history = get_session_history_for_assistant("cursor", session_uuid)
+    else:
+        history = get_session_history_for_assistant("codex", session_uuid)
     conversation_json = json.dumps(history, ensure_ascii=False)
 
     conn = _connect()
@@ -247,17 +254,21 @@ def cmd_save_history(args: list):
 
 def cmd_update_history(args: list):
     """
-    Fetch a fresh conversation snapshot for a Cursor session and UPDATE the
-    existing session_history row in-place. No new rows are inserted anywhere.
+    Fetch a fresh conversation snapshot and UPDATE the existing session_history
+    row in-place. No new rows are inserted anywhere.
 
-    Usage: db.py update-history --jira <jira_id> --session-uuid <cursor_uuid>
+    Usage:
+      db.py update-history --jira <jira_id> --session-uuid <cursor_uuid>
+      db.py update-history --jira <jira_id> --session-uuid <codex_uuid> --assistant codex
 
     --jira         : Jira ticket ID used to look up the sessions row
-    --session-uuid : Cursor composerId / --resume UUID
+    --session-uuid : Session UUID
+    --assistant    : codex | cursor (optional; default cursor)
     """
     flags = _parse_flags(args)
     jira_id      = flags.get("jira", "").strip()
     session_uuid = flags.get("session-uuid", "").strip()
+    assistant    = (flags.get("assistant", "") or "cursor").strip().lower()
 
     if not jira_id:
         print("Error: --jira is required.", file=sys.stderr)
@@ -288,17 +299,17 @@ def cmd_update_history(args: list):
         (sessions_pk,)
     ).fetchone()
 
-    # Fetch the updated conversation from Cursor's store.db
+    # Fetch the updated conversation
     script_dir = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, script_dir)
     try:
-        from get_session import get_session_history  # type: ignore
+        from get_session import get_session_history_for_assistant  # type: ignore
     except ImportError as e:
         print(f"Warning: could not import get_session.py: {e}", file=sys.stderr)
         conn.close()
         return
 
-    history = get_session_history(session_uuid)
+    history = get_session_history_for_assistant(assistant, session_uuid)
     conversation_json = json.dumps(history, ensure_ascii=False)
 
     if hist_row:
